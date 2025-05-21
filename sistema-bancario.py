@@ -16,6 +16,7 @@ extrato = ""
 numero_de_saques = 0    
 limite_de_saques = 3
 historico_depositos = []
+historico_saques = []
 
 # Funções
 while True:
@@ -34,7 +35,23 @@ while True:
             print("Valor inválido para depósito.")
     
     elif opcao == "s":
-        print("Saque")
+        if numero_de_saques >= limite_de_saques:
+            print(f"Limite de saques: {limite_de_saques} atingido!")
+        else:
+            saque = float(input("Informe o valor do saque: "))
+            if saque > saldo:
+                print("Saque indisponível por saldo insuficiente.")
+            elif saque > limite:
+                print(f"O valor do saque excede o limite de R${limite:.2f}.")
+            elif saque <= 0:
+                print("Valor de saque inválido.")
+            else:
+                saldo -= saque
+                historico_saques.append(saque)    
+                print(f"Saque de R${saque:.2f} realizado com sucesso!")
+                print(f"Seu saldo é R${saldo:.2f}")
+                numero_de_saques += 1
+
     
     elif opcao == "e":
         print("Extrato")    
