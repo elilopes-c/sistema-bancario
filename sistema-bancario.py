@@ -54,7 +54,24 @@ while True:
 
     
     elif opcao == "e":
-        print("Extrato")    
+        print("========== EXTRATO ==========") # Cabeçalho do extrato
+
+        if not historico_depositos and not historico_saques:
+            print("Sem transações.")
+        else:
+            # Imprimir os depósitos SE HOUVER algum
+            if historico_depositos:
+                print("Depósitos:")
+                for deposito in historico_depositos:
+                    print(f"  + R${deposito:.2f}")
+            # Imprimir os saques SE HOUVER algum
+            if historico_saques:
+                print("Saques:")
+                for saque in historico_saques:
+                    print(f"  - R${saque:.2f}")
+
+        print(f"\nSaldo atual: R${saldo:.2f}") # Saldo sempre no final
+        print("=============================") # Finalizador       
     
     elif opcao == "q":
         print("Saindo...")
