@@ -15,6 +15,7 @@ limite = 500
 extrato = ""
 numero_de_saques = 0    
 limite_de_saques = 3
+limite_de_transacoes = 10
 historico_depositos = []
 historico_saques = []
 
