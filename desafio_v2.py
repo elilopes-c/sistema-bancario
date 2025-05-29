@@ -1,5 +1,5 @@
 import textwrap
-from abc import ABC, abstractclassmethod, abstractproperty
+from abc import ABC
 from datetime import datetime
 
 
@@ -33,13 +33,7 @@ class Cliente:
         self.indice_conta = 0
 
     def realizar_transacao(self, conta, transacao):
-        limite_transacoes_diarias = 10  # Definindo um limite de transações diárias
-        if conta.historico.transacoes_do_dia() >= limite_transacoes_diarias:
-            print("\n@@@ Você excedeu o número de transações permitidas para hoje! @@@")
-            return 
-        # TODO: validar o número de transações e invalidar a operação se for necessário
-        # print("\n@@@ Você excedeu o número de transações permitidas para hoje! @@@")
-        transacao.registrar(conta)
+        transacao.registrar(conta) 
 
     def adicionar_conta(self, conta):
         self.contas.append(conta)
@@ -91,26 +85,23 @@ class Conta:
 
         if excedeu_saldo:
             print("\n@@@ Operação falhou! Você não tem saldo suficiente. @@@")
-
+            return False
         elif valor > 0:
             self._saldo -= valor
             print("\n=== Saque realizado com sucesso! ===")
             return True
-
         else:
             print("\n@@@ Operação falhou! O valor informado é inválido. @@@")
-
-        return False
+            return False
 
     def depositar(self, valor):
         if valor > 0:
             self._saldo += valor
             print("\n=== Depósito realizado com sucesso! ===")
+            return True
         else:
             print("\n@@@ Operação falhou! O valor informado é inválido. @@@")
             return False
-
-        return True
 
 
 class ContaCorrente(Conta):
@@ -123,6 +114,14 @@ class ContaCorrente(Conta):
     def nova_conta(cls, cliente, numero, limite, limite_saques):
         return cls(numero, cliente, limite, limite_saques)
 
+    @property
+    def limite(self): 
+        return self._limite
+
+    @property
+    def limite_saques(self): 
+        return self._limite_saques
+
     def sacar(self, valor):
         numero_saques = len(
             [transacao for transacao in self.historico.transacoes if transacao["tipo"] == Saque.__name__]
@@ -133,14 +132,12 @@ class ContaCorrente(Conta):
 
         if excedeu_limite:
             print("\n@@@ Operação falhou! O valor do saque excede o limite. @@@")
-
+            return False
         elif excedeu_saques:
             print("\n@@@ Operação falhou! Número máximo de saques excedido. @@@")
-
+            return False
         else:
             return super().sacar(valor)
-
-        return False
 
     def __str__(self):
         return f"""\
@@ -155,41 +152,34 @@ class Historico:
         self._transacoes = []
 
     @property
-    def transacoes(self): #Passo 2.2 {Para cada transação no _transacoes do Historico, você precisará extrair a data (transacao["data"]) e compará-la com a data de hoje. Lembre-se que a data no histórico está como string formatada ("%d-%m-%Y %H:%M:%S"), então você precisará convertê-la de volta para um objeto datetime ou apenas a parte da data. Pense em datetime.strptime() para converter a string para um objeto datetime.
+    def transacoes(self):
         return self._transacoes
 
-    def adicionar_transacao(self, transacao):
-        self._transacoes.append(
-            {
-                "tipo": transacao.__class__.__name__,
-                "valor": transacao.valor,
-                "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-            }
-        )
+    def adicionar_transacao(self, transacao_info): 
+        self._transacoes.append(transacao_info)
 
     def gerar_relatorio(self, tipo_transacao=None):
         for transacao in self._transacoes:
             if tipo_transacao is None or transacao["tipo"].lower() == tipo_transacao.lower():
                 yield transacao
 
-    # TODO: filtrar todas as transações realizadas no dia
-    def transacoes_do_dia(self): #"Chamado" na linha 37 if conta.historico.transacoes_do_dia()
+    def transacoes_do_dia(self):
         contador_transacoes_do_dia = 0
         data_atual = datetime.now().date()
         for transacao in self.gerar_relatorio():
-            data_transacao = datetime.strptime(transacao["data"], "%d-%m-%Y %H:%M:%S").date()
-            if data_transacao == data_atual:
-                contador_transacoes_do_dia += 1
+            # Verifica se 'data' existe na transação antes de tentar converter
+            if "data" in transacao:
+                data_transacao = datetime.strptime(transacao["data"], "%d-%m-%Y %H:%M:%S").date()
+                if data_transacao == data_atual:
+                    contador_transacoes_do_dia += 1
         return contador_transacoes_do_dia
 
 
 class Transacao(ABC):
     @property
-    @abstractproperty
     def valor(self):
         pass
 
-    @abstractclassmethod
     def registrar(self, conta):
         pass
 
@@ -202,13 +192,6 @@ class Saque(Transacao):
     def valor(self):
         return self._valor
 
-    def registrar(self, conta):
-        sucesso_transacao = conta.sacar(self.valor)
-
-        if sucesso_transacao:
-            conta.historico.adicionar_transacao(self)
-
-
 class Deposito(Transacao):
     def __init__(self, valor):
         self._valor = valor
@@ -216,13 +199,6 @@ class Deposito(Transacao):
     @property
     def valor(self):
         return self._valor
-
-    def registrar(self, conta):
-        sucesso_transacao = conta.depositar(self.valor)
-
-        if sucesso_transacao:
-            conta.historico.adicionar_transacao(self)
-
 
 def log_transacao(func):
     def envelope(*args, **kwargs):
@@ -257,81 +233,95 @@ def recuperar_conta_cliente(cliente):
         print("\n@@@ Cliente não possui conta! @@@")
         return
 
-    # FIXME: não permite cliente escolher a conta
     return cliente.contas[0]
 
 
 @log_transacao
-def depositar(clientes):
-    cpf = input("Informe o CPF do cliente: ")
-    cliente = filtrar_cliente(cpf, clientes)
-
-    if not cliente:
-        print("\n@@@ Cliente não encontrado! @@@")
-        return
-
-    valor = float(input("Informe o valor do depósito: "))
-    transacao = Deposito(valor)
-
-    conta = recuperar_conta_cliente(cliente)
-    if not conta:
-        return
-
-    cliente.realizar_transacao(conta, transacao)
+# Função DEPOSITAR: Argumentos APENAS POR POSIÇÃO
+def depositar(saldo, valor, extrato, /):
+    if valor > 0:
+        saldo += valor
+        extrato.append({
+            "tipo": "Deposito",
+            "valor": valor,
+            "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
+        })
+        print("\n=== Depósito realizado com sucesso! ===")
+        return saldo, extrato
+    else:
+        print("\n@@@ Operação falhou! O valor informado é inválido. @@@")
+        return saldo, extrato
 
 
 @log_transacao
-def sacar(clientes):
-    cpf = input("Informe o CPF do cliente: ")
-    cliente = filtrar_cliente(cpf, clientes)
+# Função SACAR: Argumentos APENAS POR NOME
+def sacar(*, saldo, valor, extrato, limite, numero_saques, limite_saques): 
+    limite_transacoes_diarias = 10 # Limite de transações diárias
 
-    if not cliente:
-        print("\n@@@ Cliente não encontrado! @@@")
-        return
-
-    valor = float(input("Informe o valor do saque: "))
-    transacao = Saque(valor)
-
-    conta = recuperar_conta_cliente(cliente)
-    if not conta:
-        return
-
-    cliente.realizar_transacao(conta, transacao)
-
-
-@log_transacao
-def exibir_extrato(clientes):
-    cpf = input("Informe o CPF do cliente: ")
-    cliente = filtrar_cliente(cpf, clientes)
-
-    if not cliente:
-        print("\n@@@ Cliente não encontrado! @@@")
-        return
-
-    conta = recuperar_conta_cliente(cliente)
-    if not conta:
-        return
-
-    print("\n================ EXTRATO ================")
-    extrato = ""
-    tem_transacao = False
-    for transacao in conta.historico.gerar_relatorio():
-        tem_transacao = True
-        extrato += f"\n{transacao['tipo']}:"
-        extrato += f"\n\tData: {transacao['data']}" 
-        extrato += f"\n\tR$ {transacao['valor']:.2f}"
+    # Validação de limite diário de transações para saque
+    transacoes_do_dia = 0
+    data_atual = datetime.now().date()
+    for t in extrato: # Usamos a lista de extrato passada como argumento
+        if "data" in t:
+            data_transacao = datetime.strptime(t["data"], "%d-%m-%Y %H:%M:%S").date()
+            if data_transacao == data_atual and t["tipo"] == "Saque": # Apenas saques contam para este limite
+                transacoes_do_dia += 1
     
-    if not tem_transacao:
-        extrato = "Não foram realizadas movimentações"
+    if transacoes_do_dia >= limite_transacoes_diarias:
+        print("\n@@@ Você excedeu o número de transações permitidas para hoje! @@@")
+        return saldo, extrato # Retorna saldo e extrato sem alteração
 
-    print(extrato)
-    print(f"\nSaldo:\n\tR$ {conta.saldo:.2f}")
+    excedeu_saldo = valor > saldo
+    excedeu_limite = valor > limite
+    excedeu_saques = numero_saques >= limite_saques
+
+    if excedeu_saldo:
+        print("\n@@@ Operação falhou! Você não tem saldo suficiente. @@@")
+    elif excedeu_limite:
+        print("\n@@@ Operação falhou! O valor do saque excede o limite. @@@")
+    elif excedeu_saques:
+        print("\n@@@ Operação falhou! Número máximo de saques excedido. @@@")
+    elif valor > 0:
+        saldo -= valor
+        extrato.append({
+            "tipo": "Saque",
+            "valor": valor,
+            "data": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
+        })
+        print("\n=== Saque realizado com sucesso! ===")
+        return saldo, extrato
+    else:
+        print("\n@@@ Operação falhou! O valor informado é inválido. @@@")
+    
+    return saldo, extrato # Retorna saldo e extrato sem alteração se a operação falhar
+
+
+@log_transacao
+# Função EXIBIR_EXTRATO: Argumento POSICIONAL e NOMEADO
+def exibir_extrato(saldo, /, *, extrato): 
+    print("\n================ EXTRATO ================")
+    extrato_str = ""
+    tem_transacao = False
+    for transacao in extrato: # Itera sobre a lista de extrato passada como argumento
+        tem_transacao = True
+        extrato_str += f"\n{transacao['tipo']}:"
+        extrato_str += f"\n\tData: {transacao['data']}"
+        extrato_str += f"\n\tR$ {transacao['valor']:.2f}"
+
+    if not tem_transacao:
+        extrato_str = "Não foram realizadas movimentações"
+
+    print(extrato_str)
+    print(f"\nSaldo:\n\tR$ {saldo:.2f}") # Usa o saldo passado como argumento posicional
     print("==========================================")
 
 
 @log_transacao
 def criar_cliente(clientes):
     cpf = input("Informe o CPF (somente número): ")
+    # Limpa o CPF de caracteres não numéricos
+    cpf = ''.join(filter(str.isdigit, cpf)) 
+    
     cliente = filtrar_cliente(cpf, clientes)
 
     if cliente:
@@ -358,21 +348,20 @@ def criar_conta(numero_conta, clientes, contas):
         print("\n@@@ Cliente não encontrado, fluxo de criação de conta encerrado! @@@")
         return
 
-    # NOTE: O valor padrão de limite de saques foi alterado para 50 saques
-    conta = ContaCorrente.nova_conta(cliente=cliente, numero=numero_conta, limite=500, limite_saques=50)
+    conta = ContaCorrente.nova_conta(cliente=cliente, numero=numero_conta, limite=500, limite_saques=3) 
     contas.append(conta)
     cliente.contas.append(conta)
 
     print("\n=== Conta criada com sucesso! ===")
 
 
-def listar_contas(contas):
+def listar_contas(contas): 
     for conta in ContasIterador(contas):
         print("=" * 100)
         print(textwrap.dedent(str(conta)))
 
 
-def main():
+def main(): 
     clientes = []
     contas = []
 
@@ -380,13 +369,68 @@ def main():
         opcao = menu()
 
         if opcao == "d":
-            depositar(clientes)
+            cpf = input("Informe o CPF do cliente: ")
+            cliente = filtrar_cliente(cpf, clientes)
+
+            if not cliente:
+                print("\n@@@ Cliente não encontrado! @@@")
+                continue
+
+            conta = recuperar_conta_cliente(cliente)
+            if not conta:
+                continue
+
+            valor = float(input("Informe o valor do depósito: "))
+            
+            # Chama a função depositar com argumentos posicionais
+            conta._saldo, conta._historico._transacoes = depositar(
+                conta.saldo,
+                valor,
+                conta.historico.transacoes,
+            )
 
         elif opcao == "s":
-            sacar(clientes)
+            cpf = input("Informe o CPF do cliente: ")
+            cliente = filtrar_cliente(cpf, clientes)
+
+            if not cliente:
+                print("\n@@@ Cliente não encontrado! @@@")
+                continue
+
+            conta = recuperar_conta_cliente(cliente)
+            if not conta:
+                continue
+            
+            valor = float(input("Informe o valor do saque: "))
+
+            # Chama a função sacar com argumentos nomeados
+            numero_saques = len(
+                [t for t in conta.historico.transacoes if t["tipo"] == "Saque"]
+            )
+            
+            conta._saldo, conta._historico._transacoes = sacar(
+                saldo=conta.saldo,
+                valor=valor,
+                extrato=conta.historico.transacoes,
+                limite=conta.limite, # Acesso ao limite da conta corrente
+                numero_saques=numero_saques,
+                limite_saques=conta.limite_saques # Acesso ao limite de saques da conta corrente
+            )
 
         elif opcao == "e":
-            exibir_extrato(clientes)
+            cpf = input("Informe o CPF do cliente: ")
+            cliente = filtrar_cliente(cpf, clientes)
+
+            if not cliente:
+                print("\n@@@ Cliente não encontrado! @@@")
+                continue
+
+            conta = recuperar_conta_cliente(cliente)
+            if not conta:
+                continue
+            
+            # Chama a função exibir_extrato com argumento posicional e nomeado
+            exibir_extrato(conta.saldo, extrato=conta.historico.transacoes)
 
         elif opcao == "nu":
             criar_cliente(clientes)
